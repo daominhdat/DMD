@@ -1,0 +1,7 @@
+{
+  "name": "Ninja Fruit AR",
+  "description": "An augmented reality fruit slicing game using hand tracking. Slice fruits, avoid bombs, and survive!",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

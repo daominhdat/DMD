@@ -1,0 +1,58 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARFruit - Ninja Slicing Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Roboto:wght@400;700&display=swap');
+      body {
+        font-family: 'Roboto', sans-serif;
+        overflow: hidden;
+        background-color: #0a0a0c;
+        margin: 0;
+      }
+      .font-game {
+        font-family: 'Bangers', cursive;
+      }
+      /* Custom cursor hide for immersion */
+      .custom-cursor-active {
+        cursor: none;
+      }
+      
+      @keyframes hologram-glow {
+        0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+        50% { background-position: 100% 50%; filter: hue-rotate(180deg); }
+        100% { background-position: 0% 50%; filter: hue-rotate(360deg); }
+      }
+
+      .hologram-text {
+        background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff, #ffff00);
+        background-size: 300% 300%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: hologram-glow 5s linear infinite;
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+</head>
+  <body class="custom-cursor-active">
+    <div id="root"></div>
+  </body>
+</html>
