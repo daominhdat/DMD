@@ -145,58 +145,62 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
     };
   }, [score, mode, photo]);
 
-  const displayScore = score;
-
   return (
-    <div className="fixed inset-0 z-50 bg-[#0a0a0c] flex flex-col items-center justify-center p-8 text-white font-game overflow-hidden">
-      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-10 scale-x-[-1]" playsInline muted />
+    <div className="fixed inset-0 z-50 bg-[#0a0a0c] flex flex-col items-center justify-center p-8 text-white font-game overflow-hidden select-none">
+      {/* Background Video - See yourself clearly */}
+      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-40 scale-x-[-1]" playsInline muted />
       
-      {/* Top Section: Small Score and Photo */}
+      {/* Top Section: Small Score and Photo (Glass Panel) */}
       <div className="absolute top-10 flex flex-col items-center z-10 animate-fade-in-down">
-          <h2 className="text-6xl text-red-500 mb-4 drop-shadow-[0_0_20px_rgba(239,68,68,0.7)]">KẾT THÚC</h2>
-          <div className="flex items-center gap-6 bg-black/40 p-4 rounded-3xl border-2 border-white/10 backdrop-blur-md">
-            <img src={photo} alt="Face capture" className="w-32 h-24 object-cover rounded-xl border-2 border-yellow-400" />
+          <h2 className="text-7xl text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.7)] uppercase font-bold italic">KẾT THÚC</h2>
+          <div className="flex items-center gap-6 bg-white/10 backdrop-blur-2xl p-6 rounded-[2.5rem] border-2 border-white/20 shadow-2xl">
+            <img src={photo} alt="Face capture" className="w-40 h-32 object-cover rounded-2xl border-2 border-yellow-400 shadow-lg" />
             <div className="flex flex-col">
-              <span className="text-gray-400 font-sans text-sm uppercase font-bold">Điểm số</span>
-              <span className="text-5xl text-yellow-400">{displayScore}</span>
+              <span className="text-gray-300 font-sans text-lg uppercase font-black tracking-widest">Điểm Ninja</span>
+              <span className="text-7xl text-yellow-400 drop-shadow-md">{score}</span>
             </div>
           </div>
       </div>
 
-      {/* Center Section: Huge Buttons */}
-      <div className="flex flex-col gap-8 w-full max-w-2xl z-20 mt-20">
+      {/* Center Section: Huge Transparent Glass Buttons */}
+      <div className="flex flex-col gap-10 w-full max-w-2xl z-20 mt-24">
           <div 
             ref={el => { buttonRefs.current['restart'] = el; }}
-            className={`group relative overflow-hidden w-full h-48 flex items-center justify-center rounded-[3rem] text-8xl font-black transition-all duration-300 shadow-[0_10px_50px_rgba(0,0,0,0.5)] ${hoveredId === 'restart' ? 'bg-white text-green-600 scale-105 shadow-[0_0_80px_rgba(34,197,94,0.6)]' : 'bg-gradient-to-r from-green-500 to-emerald-700 border-4 border-white/20'}`}
+            className={`group relative overflow-hidden w-full h-52 flex items-center justify-center rounded-[4rem] text-8xl font-black transition-all duration-300 backdrop-blur-3xl border-4 ${hoveredId === 'restart' ? 'bg-white/30 border-white scale-105 shadow-[0_0_80px_rgba(255,255,255,0.3)]' : 'bg-white/10 border-white/20'}`}
           >
-            <span className="relative z-10">{hoveredId === 'restart' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'CHƠI LẠI'}</span>
+            <span className="relative z-10 drop-shadow-lg text-green-400">
+                {hoveredId === 'restart' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'CHƠI LẠI'}
+            </span>
             {hoveredId === 'restart' && (
-              <div className="absolute bottom-0 left-0 h-full bg-green-200/50 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
+              <div className="absolute bottom-0 left-0 h-full bg-green-500/20 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
             )}
           </div>
 
           <div 
             ref={el => { buttonRefs.current['home'] = el; }}
-            className={`group relative overflow-hidden w-full h-40 flex items-center justify-center rounded-[3rem] text-7xl font-black transition-all duration-300 ${hoveredId === 'home' ? 'bg-white text-gray-900 scale-105 shadow-[0_0_60px_rgba(255,255,255,0.4)]' : 'bg-white/10 border-4 border-white/20 hover:bg-white/20'}`}
+            className={`group relative overflow-hidden w-full h-44 flex items-center justify-center rounded-[4rem] text-7xl font-black transition-all duration-300 backdrop-blur-3xl border-4 ${hoveredId === 'home' ? 'bg-white/30 border-white scale-105 shadow-[0_0_60px_rgba(255,255,255,0.2)]' : 'bg-white/10 border-white/20'}`}
           >
-            <span className="relative z-10">{hoveredId === 'home' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'VỀ MENU'}</span>
+            <span className="relative z-10 drop-shadow-lg text-white">
+                {hoveredId === 'home' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'VỀ MENU'}
+            </span>
             {hoveredId === 'home' && (
-              <div className="absolute bottom-0 left-0 h-full bg-gray-500/50 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
+              <div className="absolute bottom-0 left-0 h-full bg-white/10 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
             )}
           </div>
       </div>
 
-      <div className="absolute bottom-10 bg-black/60 px-12 py-6 rounded-full border-2 border-white/10 flex items-center gap-6 z-10">
+      {/* Instruction */}
+      <div className="absolute bottom-10 bg-white/10 backdrop-blur-xl px-12 py-6 rounded-full border border-white/20 flex items-center gap-6 z-10">
         <span className="text-4xl">✊</span>
-        <p className="font-sans text-gray-300 text-xl font-bold uppercase tracking-widest">NẮM TAY ĐỂ CHỌN</p>
+        <p className="font-sans text-gray-200 text-xl font-black uppercase tracking-widest">NẮM TAY ĐỂ CHỌN</p>
       </div>
 
-      {/* CURSOR */}
+      {/* Glass CURSOR */}
       <div 
         className="fixed z-[100] pointer-events-none transition-all duration-75 ease-out"
         style={{ left: cursorPos.x, top: cursorPos.y, transform: `translate(-50%, -50%) ${isGrabbing ? 'scale(0.8)' : 'scale(1.2)'}` }}
       >
-        <div className={`relative w-24 h-24 rounded-full border-[8px] flex items-center justify-center ${isGrabbing ? 'bg-white border-white shadow-[0_0_80px_#fff]' : 'bg-transparent border-white shadow-[0_0_40px_#fff]'}`}>
+        <div className={`relative w-24 h-24 rounded-full border-[8px] flex items-center justify-center backdrop-blur-md ${isGrabbing ? 'bg-white/60 border-white' : 'bg-white/10 border-white/40'}`}>
           <div className="text-5xl">{isGrabbing ? '✊' : '🖐️'}</div>
         </div>
       </div>
