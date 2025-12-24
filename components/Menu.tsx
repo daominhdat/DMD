@@ -38,6 +38,9 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
     const video = videoRef.current;
     if (!video) return;
 
+    let cameraStream: MediaStream | null = null;
+    let animationFrameId: number;
+
     const hands = new window.Hands({
       locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
@@ -100,14 +103,38 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
       }
     });
 
-    const camera = new window.Camera(video, {
-      onFrame: async () => await hands.send({ image: video }),
-      width: 640,
-      height: 480,
-    });
-    camera.start();
+    const startCamera = async () => {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = cameraStream;
+          await videoRef.current.play();
 
-    return () => camera.stop();
+          const sendToMediaPipe = async () => {
+            if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended) {
+                await hands.send({ image: videoRef.current });
+            }
+            if (cameraStream) animationFrameId = requestAnimationFrame(sendToMediaPipe);
+          };
+          sendToMediaPipe();
+        }
+      } catch (err) {
+        console.error("Camera access error:", err);
+      }
+    };
+
+    startCamera();
+
+    return () => {
+        if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+        cancelAnimationFrame(animationFrameId);
+    };
   }, [selectedTime]);
 
   const handleVirtualClick = (id: string) => {
@@ -132,7 +159,7 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
               <img src={entry.photo} className="w-12 h-10 object-cover rounded-lg border border-white/20" alt="Face" />
               <div className="flex-grow">
                 <div className="text-lg">#{idx + 1} Ninja</div>
-                <div className="text-[10px] text-gray-400 font-sans uppercase font-bold">{entry.mode}</div>
+                <div className="text-[10px] text-gray-400 font-sans uppercase font-bold">{entry.mode === GameMode.DODGE ? 'SINH TỒN' : (entry.mode === GameMode.SURVIVAL ? 'CỔ ĐIỂN' : 'THỜI GIAN')}</div>
               </div>
               <div className="text-xl text-yellow-300">{entry.score}</div>
             </div>
@@ -151,8 +178,8 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         {['mode-time', 'mode-survival', 'mode-dodge'].map((modeId, idx) => {
           const config = [
             { title: 'Thời Gian', icon: '⏱️', desc: 'Phá kỷ lục nhanh tay!', color: 'from-yellow-400 to-orange-500' },
-            { title: 'Sinh Tồn', icon: '⚔️', desc: 'Đừng để lọt trái cây!', color: 'from-red-500 to-pink-600' },
-            { title: 'Né Tránh', icon: '🤸', desc: 'Chỉ né hoa quả bay!', color: 'from-blue-400 to-indigo-600' }
+            { title: 'Cổ Điển', icon: '⚔️', desc: 'Đừng để rơi trái cây!', color: 'from-red-500 to-pink-600' },
+            { title: 'Sinh Tồn', icon: '❤️', desc: 'Bảo vệ trái tim khỏi hoa quả!', color: 'from-blue-400 to-indigo-600' }
           ][idx];
 
           return (

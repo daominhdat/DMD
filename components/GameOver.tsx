@@ -38,7 +38,7 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
       const leaderboard: LeaderboardEntry[] = saved ? JSON.parse(saved) : [];
       const newEntry: LeaderboardEntry = {
         id: Date.now().toString(),
-        score: mode === GameMode.DODGE ? score.toFixed(2) : score,
+        score: score,
         mode: mode,
         photo: photo,
         date: Date.now()
@@ -50,6 +50,9 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
 
     const video = videoRef.current;
     if (!video) return;
+
+    let cameraStream: MediaStream | null = null;
+    let animationFrameId: number;
 
     const hands = new window.Hands({
       locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
@@ -108,16 +111,41 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
       }
     });
 
-    const camera = new window.Camera(video, {
-      onFrame: async () => await hands.send({ image: video }),
-      width: 640,
-      height: 480,
-    });
-    camera.start();
-    return () => camera.stop();
+    const startCamera = async () => {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = cameraStream;
+          await videoRef.current.play();
+
+          const sendToMediaPipe = async () => {
+            if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended) {
+                await hands.send({ image: videoRef.current });
+            }
+            if (cameraStream) animationFrameId = requestAnimationFrame(sendToMediaPipe);
+          };
+          sendToMediaPipe();
+        }
+      } catch (err) {
+        console.error("Camera access error:", err);
+      }
+    };
+
+    startCamera();
+
+    return () => {
+        if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+        cancelAnimationFrame(animationFrameId);
+    };
   }, [score, mode, photo]);
 
-  const displayScore = mode === GameMode.DODGE ? `${score.toFixed(2)}s` : score;
+  const displayScore = score;
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0c] flex flex-col items-center justify-center p-8 text-white font-game overflow-hidden">
@@ -137,7 +165,6 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
 
           <div className="flex flex-col gap-10 w-full">
               <div 
-                // FIX: Wrapped the assignment in braces to return void, satisfying the Ref callback type.
                 ref={el => { buttonRefs.current['restart'] = el; }}
                 className={`group relative overflow-hidden w-full py-10 rounded-[3rem] text-6xl font-black text-center transition-all duration-300 ${hoveredId === 'restart' ? 'bg-white text-green-600 scale-105 shadow-2xl' : 'bg-gradient-to-r from-green-500 to-emerald-600'}`}
               >
@@ -148,7 +175,6 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
               </div>
 
               <div 
-                // FIX: Wrapped the assignment in braces to return void.
                 ref={el => { buttonRefs.current['home'] = el; }}
                 className={`group relative overflow-hidden w-full py-8 rounded-[3rem] text-5xl font-black text-center transition-all duration-300 ${hoveredId === 'home' ? 'bg-white text-gray-900 scale-105' : 'bg-white/10 border-4 border-white/20'}`}
               >
