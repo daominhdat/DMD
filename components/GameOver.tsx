@@ -151,44 +151,44 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
     <div className="fixed inset-0 z-50 bg-[#0a0a0c] flex flex-col items-center justify-center p-8 text-white font-game overflow-hidden">
       <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-10 scale-x-[-1]" playsInline muted />
       
-      <h2 className="relative z-10 text-[10rem] text-red-500 mb-12 animate-pulse drop-shadow-[0_0_50px_rgba(239,68,68,0.7)]">KẾT THÚC</h2>
-
-      <div className="relative z-10 bg-white/5 backdrop-blur-3xl p-16 rounded-[4rem] border-4 border-white/10 flex flex-col items-center max-w-4xl w-full shadow-[0_0_100px_rgba(0,0,0,0.5)]">
-          <div className="relative mb-12 scale-125">
-              <img src={photo} alt="Face capture" className="w-[450px] h-[350px] object-cover rounded-[3rem] border-8 border-yellow-400 shadow-[0_0_60px_rgba(251,191,36,0.4)]" />
-              <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-yellow-400 text-black px-16 py-4 rounded-full text-7xl font-bold shadow-2xl">
-                  {displayScore}
-              </div>
-          </div>
-
-          <p className="text-gray-400 font-sans mb-16 text-3xl uppercase tracking-[0.5em] font-black">Ninja đã lưu kỷ lục</p>
-
-          <div className="flex flex-col gap-10 w-full">
-              <div 
-                ref={el => { buttonRefs.current['restart'] = el; }}
-                className={`group relative overflow-hidden w-full py-10 rounded-[3rem] text-6xl font-black text-center transition-all duration-300 ${hoveredId === 'restart' ? 'bg-white text-green-600 scale-105 shadow-2xl' : 'bg-gradient-to-r from-green-500 to-emerald-600'}`}
-              >
-                {hoveredId === 'restart' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'CHƠI LẠI'}
-                {hoveredId === 'restart' && (
-                  <div className="absolute bottom-0 left-0 h-4 bg-green-400 transition-all" style={{ width: `${holdProgress}%` }} />
-                )}
-              </div>
-
-              <div 
-                ref={el => { buttonRefs.current['home'] = el; }}
-                className={`group relative overflow-hidden w-full py-8 rounded-[3rem] text-5xl font-black text-center transition-all duration-300 ${hoveredId === 'home' ? 'bg-white text-gray-900 scale-105' : 'bg-white/10 border-4 border-white/20'}`}
-              >
-                {hoveredId === 'home' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'VỀ MENU'}
-                {hoveredId === 'home' && (
-                  <div className="absolute bottom-0 left-0 h-4 bg-gray-400 transition-all" style={{ width: `${holdProgress}%` }} />
-                )}
-              </div>
+      {/* Top Section: Small Score and Photo */}
+      <div className="absolute top-10 flex flex-col items-center z-10 animate-fade-in-down">
+          <h2 className="text-6xl text-red-500 mb-4 drop-shadow-[0_0_20px_rgba(239,68,68,0.7)]">KẾT THÚC</h2>
+          <div className="flex items-center gap-6 bg-black/40 p-4 rounded-3xl border-2 border-white/10 backdrop-blur-md">
+            <img src={photo} alt="Face capture" className="w-32 h-24 object-cover rounded-xl border-2 border-yellow-400" />
+            <div className="flex flex-col">
+              <span className="text-gray-400 font-sans text-sm uppercase font-bold">Điểm số</span>
+              <span className="text-5xl text-yellow-400">{displayScore}</span>
+            </div>
           </div>
       </div>
 
-      <div className="mt-16 bg-black/60 px-16 py-8 rounded-full border-4 border-white/20 flex items-center gap-8 animate-pulse z-10">
-        <span className="text-6xl">✊</span>
-        <p className="font-sans text-gray-200 text-3xl font-bold uppercase tracking-widest">NẮM CHẶT TAY TRONG 3 GIÂY ĐỂ CHỌN!</p>
+      {/* Center Section: Huge Buttons */}
+      <div className="flex flex-col gap-8 w-full max-w-2xl z-20 mt-20">
+          <div 
+            ref={el => { buttonRefs.current['restart'] = el; }}
+            className={`group relative overflow-hidden w-full h-48 flex items-center justify-center rounded-[3rem] text-8xl font-black transition-all duration-300 shadow-[0_10px_50px_rgba(0,0,0,0.5)] ${hoveredId === 'restart' ? 'bg-white text-green-600 scale-105 shadow-[0_0_80px_rgba(34,197,94,0.6)]' : 'bg-gradient-to-r from-green-500 to-emerald-700 border-4 border-white/20'}`}
+          >
+            <span className="relative z-10">{hoveredId === 'restart' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'CHƠI LẠI'}</span>
+            {hoveredId === 'restart' && (
+              <div className="absolute bottom-0 left-0 h-full bg-green-200/50 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
+            )}
+          </div>
+
+          <div 
+            ref={el => { buttonRefs.current['home'] = el; }}
+            className={`group relative overflow-hidden w-full h-40 flex items-center justify-center rounded-[3rem] text-7xl font-black transition-all duration-300 ${hoveredId === 'home' ? 'bg-white text-gray-900 scale-105 shadow-[0_0_60px_rgba(255,255,255,0.4)]' : 'bg-white/10 border-4 border-white/20 hover:bg-white/20'}`}
+          >
+            <span className="relative z-10">{hoveredId === 'home' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'VỀ MENU'}</span>
+            {hoveredId === 'home' && (
+              <div className="absolute bottom-0 left-0 h-full bg-gray-500/50 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
+            )}
+          </div>
+      </div>
+
+      <div className="absolute bottom-10 bg-black/60 px-12 py-6 rounded-full border-2 border-white/10 flex items-center gap-6 z-10">
+        <span className="text-4xl">✊</span>
+        <p className="font-sans text-gray-300 text-xl font-bold uppercase tracking-widest">NẮM TAY ĐỂ CHỌN</p>
       </div>
 
       {/* CURSOR */}
@@ -196,8 +196,8 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
         className="fixed z-[100] pointer-events-none transition-all duration-75 ease-out"
         style={{ left: cursorPos.x, top: cursorPos.y, transform: `translate(-50%, -50%) ${isGrabbing ? 'scale(0.8)' : 'scale(1.2)'}` }}
       >
-        <div className={`relative w-32 h-32 rounded-full border-[10px] flex items-center justify-center ${isGrabbing ? 'bg-white border-white shadow-[0_0_80px_#fff]' : 'bg-transparent border-white shadow-[0_0_40px_#fff]'}`}>
-          <div className="text-7xl">{isGrabbing ? '✊' : '🖐️'}</div>
+        <div className={`relative w-24 h-24 rounded-full border-[8px] flex items-center justify-center ${isGrabbing ? 'bg-white border-white shadow-[0_0_80px_#fff]' : 'bg-transparent border-white shadow-[0_0_40px_#fff]'}`}>
+          <div className="text-5xl">{isGrabbing ? '✊' : '🖐️'}</div>
         </div>
       </div>
     </div>

@@ -30,6 +30,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
   const difficultyMultiplierRef = useRef(1.0); 
   const lastSpawnTimeRef = useRef(0);
   const isPausedRef = useRef(false);
+  const isGameOverRef = useRef(false); // New Ref to lock score
   const calibrationFramesRef = useRef(0);
   const bombExplosionRef = useRef(0); 
   const hasShownStartRef = useRef(false);
@@ -98,7 +99,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     if (!ctx) return;
 
     scoreRef.current = 0;
-    livesRef.current = 10; // Default 10 lives for Survival & Defense (Dodge)
+    livesRef.current = 10; 
     if (config.mode === GameMode.TIME) livesRef.current = 0;
     
     setUiLives(livesRef.current);
@@ -111,6 +112,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     missedFruitsRef.current = [];
     comboHitsRef.current = 0;
     multiplierRef.current = 1;
+    isGameOverRef.current = false;
 
     let animationFrameId: number;
     let cameraStream: MediaStream | null = null;
@@ -169,7 +171,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       }
     });
 
-    // Native Camera Setup
     const startCamera = async () => {
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -193,13 +194,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
         }
       } catch (err) {
         console.error("Camera access error:", err);
-        alert("Không thể truy cập camera. Vui lòng cấp quyền và thử lại.");
       }
     };
     startCamera();
 
     const loop = () => {
       if (!ctx || !canvas) return;
+      if (isGameOverRef.current) return; // Stop loop logic if game over triggered
+
       const nowTs = Date.now();
 
       ctx.save();
@@ -214,7 +216,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
 
       if (!isCalibrated) {
          drawCalibrationOverlay(ctx, canvas);
-         requestAnimationFrame(loop); // Don't assign to animationFrameId to avoid conflict with camera loop
+         requestAnimationFrame(loop); 
          return;
       }
 
@@ -234,9 +236,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       const cycle = frameCountRef.current % 600;
       setLevelProgress((cycle / 600) * 100);
       
-      // Heart Pulse Effect for Dodge Mode (now Survival/Defense)
       if (config.mode === GameMode.DODGE) {
-        heartPulseRef.current = (Math.sin(nowTs / 200) + 1) * 0.1 + 1; // 1.0 to 1.2
+        heartPulseRef.current = (Math.sin(nowTs / 200) + 1) * 0.1 + 1; 
         ctx.save();
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.scale(heartPulseRef.current, heartPulseRef.current);
@@ -266,8 +267,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       const isIceActive = effectIceRef.current > 0;
 
       if (!isPausedRef.current) {
-          let spawnRate = 35 / difficultyMultiplierRef.current; 
-          if (isIceActive) spawnRate /= 4; // x4 spawn
+          // GIẢM MỘT NỬA TỐC ĐỘ XUẤT HIỆN: 
+          // Trước đây 35 -> Giờ tăng lên 70 (số càng lớn, thời gian giữa các lần spawn càng lâu)
+          let spawnRate = 70 / difficultyMultiplierRef.current; 
+          if (isIceActive) spawnRate /= 4; 
           if (frameCountRef.current - lastSpawnTimeRef.current > spawnRate) {
               spawnEntity(canvas.width, canvas.height, config.mode);
               lastSpawnTimeRef.current = frameCountRef.current;
@@ -285,7 +288,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
             entity.y += entity.vy * speedMod;
             entity.rotation += (entity.isHalf ? entity.rotationSpeed * 1.5 : entity.rotationSpeed) * speedMod;
 
-            // Nảy ra nếu chạm cạnh trái/phải
             if (entity.x < 50 || entity.x > canvas.width - 50) {
                 entity.vx *= -0.5;
                 entity.x = entity.x < 50 ? 51 : canvas.width - 51;
@@ -315,22 +317,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
           ctx.fillText(entity.emoji, 0, 0);
           ctx.restore();
           
-          // Logic for DODGE (Defense): Hit Heart?
           if (config.mode === GameMode.DODGE && !entity.isHalf && !entity.isSliced) {
               const distToHeart = Math.hypot(entity.x - canvas.width / 2, entity.y - canvas.height / 2);
-              if (distToHeart < 80) { // Heart Hit
+              if (distToHeart < 80) { 
                   if (entity.type === ItemType.BOMB) {
-                      // Bomb hitting heart might be ok? Or bad? Assuming bombs hitting heart is OK, slicing them is bad.
-                      // Actually, usually defense means "nothing hits center".
-                      // Let's say bombs also damage the heart for consistency, or maybe they just explode harmlessly?
-                      // Standard: Protect heart from everything.
-                      livesRef.current -= 1;
-                      setUiLives(livesRef.current);
+                      livesRef.current -= 1; setUiLives(livesRef.current);
                       showNotification("BOM NỔ! -1 HP");
                       createExplosion(entity.x, entity.y, '#000', 20);
                   } else {
-                      livesRef.current -= 1;
-                      setUiLives(livesRef.current);
+                      livesRef.current -= 1; setUiLives(livesRef.current);
                       showNotification("ĐAU TIM QUÁ! -1");
                       createExplosion(entity.x, entity.y, '#ff0000', 10);
                   }
@@ -339,16 +334,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
               }
           }
 
-          // Off-screen check
           if (entity.y > canvas.height + 300) {
               entitiesToRemove.push(entity.id);
-              // Old Survival (Classic) Mode logic: Drop = Lose Life
               if (config.mode === GameMode.SURVIVAL && entity.type === ItemType.FRUIT && !entity.isHalf) {
                   livesRef.current -= 1; setUiLives(livesRef.current); 
                   showNotification("TRƯỢT!");
                   missedFruitsRef.current.push({ x: entity.x, y: canvas.height - 50, life: 1.0 });
                   
-                  // Reset combo
                   comboHitsRef.current = 0; multiplierRef.current = 1;
                   setUiCombo(0); setUiMultiplier(1);
 
@@ -357,7 +349,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
           }
       });
 
-      // Red X for missed fruits
       missedFruitsRef.current = missedFruitsRef.current.filter(m => m.life > 0);
       missedFruitsRef.current.forEach(m => {
           ctx.save(); ctx.globalAlpha = m.life; ctx.strokeStyle = 'red'; ctx.lineWidth = 10;
@@ -399,6 +390,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     };
 
     const triggerGameOver = () => {
+        if (isGameOverRef.current) return; // Prevent multiple triggers
+        isGameOverRef.current = true; // Lock scoring
+        
         const captureCanvas = document.createElement('canvas');
         captureCanvas.width = 400; captureCanvas.height = 300;
         const cctx = captureCanvas.getContext('2d');
@@ -412,25 +406,18 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     const drawCalibrationOverlay = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
         const cw = canvas.width; const ch = canvas.height;
         const targetX = cw / 2; const targetY = ch / 2;
-
         ctx.font = 'bold 50px Bangers'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
         ctx.fillText('ĐƯA NGÓN TRỎ VÀO VÒNG TRÒN ĐỂ BẮT ĐẦU', cw / 2, ch / 2 - 150);
-
-        // Target Circle
         ctx.save();
         ctx.lineWidth = 8; ctx.strokeStyle = calibrationProgress > 0 ? '#00ffff' : '#fff';
         ctx.beginPath(); ctx.arc(targetX, targetY, 80, 0, Math.PI * 2); ctx.stroke();
-        
-        // Progress ring
         if (calibrationProgress > 0) {
           ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 12; ctx.beginPath();
           ctx.arc(targetX, targetY, 80, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * calibrationProgress / 100));
           ctx.stroke();
         }
-        
         ctx.fillStyle = 'rgba(255,255,255,0.2)';
         ctx.fill(); ctx.restore();
-
         ctx.font = '60px serif'; ctx.fillText('☝️', targetX, targetY + 20);
     };
 
@@ -439,25 +426,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
         const side = Math.random() > 0.5 ? 'left' : 'right';
         const x = side === 'left' ? randomRange(100, w/3) : randomRange(2*w/3, w-100);
         const y = h + 100;
-        
-        // Góc bắn từ 45 - 80 độ
         const angleDeg = randomRange(45, 80);
         const angleRad = (angleDeg * Math.PI) / 180;
-        
-        // Tính toán vận tốc để đạt đỉnh ngay mép trên (h)
         const targetHeight = h + randomRange(50, 150);
         const launchVelocity = Math.sqrt(2 * GRAVITY * targetHeight);
         
-        let vx = Math.cos(angleRad) * launchVelocity * (side === 'left' ? 0.6 : -0.6);
-        let vy = -Math.sin(angleRad) * launchVelocity;
+        // GIẢM NHẸ VẬN TỐC để trái cây bay chậm hơn chút (x0.9)
+        let vx = Math.cos(angleRad) * launchVelocity * (side === 'left' ? 0.6 : -0.6) * 0.9;
+        let vy = -Math.sin(angleRad) * launchVelocity * 0.9;
 
-        // Special targeting for DODGE (Defense) Mode: Aim closer to center
         if (mode === GameMode.DODGE) {
-           const timeToCenter = 60; // Approximate frames to reach mid height
-           // Simple bias: Pull vx towards center
+           const timeToCenter = 60; 
            const centerX = w/2;
            const requiredVx = (centerX - x) / timeToCenter;
-           // Blend calculated physics vx with directed vx
            vx = vx * 0.3 + requiredVx * 0.7;
         }
         
@@ -475,6 +456,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     };
 
     const handleHitStandard = (entity: Entity, newEntities: Entity[], ts: number) => {
+        if (isGameOverRef.current) return; // Không tính điểm nếu game đã hết
+        
         if (entity.type === ItemType.BOMB) {
             scoreRef.current = Math.max(0, scoreRef.current - 5); 
             bombExplosionRef.current = 1.0; isPausedRef.current = true;
@@ -486,7 +469,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
             showNotification("BĂNG GIÁ x4!");
         } else if (entity.type === ItemType.BASKET) {
             showNotification("BÙNG NỔ!");
-            for(let i=0; i<12; i++) spawnEntity(canvasRef.current!.width, canvasRef.current!.height, config.mode);
+            for(let i=0; i<6; i++) spawnEntity(canvasRef.current!.width, canvasRef.current!.height, config.mode);
         } else {
             comboHitsRef.current += 1;
             if (comboHitsRef.current > 0 && comboHitsRef.current % 10 === 0) {
