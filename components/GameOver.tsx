@@ -22,12 +22,12 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
   const holdStartTimeRef = useRef<number | null>(null);
   const buttonRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
-  const isFist = (landmarks: any) => {
+  const isFist = (lm: any) => {
     const fingers = [8, 12, 16, 20];
     const knuckles = [5, 9, 13, 17];
     let foldedCount = 0;
     for (let i = 0; i < fingers.length; i++) {
-      if (landmarks[fingers[i]].y > landmarks[knuckles[i]].y) foldedCount++;
+      if (lm[fingers[i]].y > lm[knuckles[i]].y) foldedCount++;
     }
     return foldedCount >= 3;
   };
@@ -48,160 +48,90 @@ const GameOver: React.FC<GameOverProps> = ({ score, mode, photo, onRestart, onHo
     };
     saveResult();
 
-    const video = videoRef.current;
-    if (!video) return;
-
     let cameraStream: MediaStream | null = null;
     let animationFrameId: number;
-
-    const hands = new window.Hands({
-      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
-
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7,
-    });
-
+    const hands = new window.Hands({ locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults((results: any) => {
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        const indexTip = landmarks[8];
-        const x = (1 - indexTip.x) * window.innerWidth;
-        const y = indexTip.y * window.innerHeight;
+        const lm = results.multiHandLandmarks[0];
+        const x = (1 - lm[8].x) * window.innerWidth;
+        const y = lm[8].y * window.innerHeight;
         setCursorPos({ x, y });
-
-        const grabbing = isFist(landmarks);
-        setIsGrabbing(grabbing);
-
+        const grabbing = isFist(lm); setIsGrabbing(grabbing);
         let foundHover = null;
         for (const id in buttonRefs.current) {
           const el = buttonRefs.current[id];
           if (el) {
             const rect = el.getBoundingClientRect();
-            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-              foundHover = id;
-              break;
-            }
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) { foundHover = id; break; }
           }
         }
         setHoveredId(foundHover);
-
         if (foundHover && grabbing) {
           if (!holdStartTimeRef.current) holdStartTimeRef.current = Date.now();
-          const elapsed = Date.now() - holdStartTimeRef.current;
-          const progress = Math.min(100, (elapsed / 3000) * 100);
+          const progress = Math.min(100, ((Date.now() - holdStartTimeRef.current) / 2000) * 100);
           setHoldProgress(progress);
-          if (progress >= 100) {
-            if (foundHover === 'restart') onRestart();
-            else if (foundHover === 'home') onHome();
-            holdStartTimeRef.current = null;
-          }
-        } else {
-          setHoldProgress(0);
-          holdStartTimeRef.current = null;
-        }
-      } else {
-        setCursorPos({ x: -200, y: -200 });
-        setIsGrabbing(false);
-        setHoveredId(null);
-        setHoldProgress(0);
-      }
+          if (progress >= 100) { if (foundHover === 'restart') onRestart(); else onHome(); holdStartTimeRef.current = null; }
+        } else { setHoldProgress(0); holdStartTimeRef.current = null; }
+      } else { setIsGrabbing(false); setHoveredId(null); setHoldProgress(0); }
     });
 
     const startCamera = async () => {
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
-        });
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
         if (videoRef.current) {
-          videoRef.current.srcObject = cameraStream;
-          await videoRef.current.play();
-
-          const sendToMediaPipe = async () => {
-            if (videoRef.current && !videoRef.current.paused && !videoRef.current.ended) {
-                await hands.send({ image: videoRef.current });
-            }
-            if (cameraStream) animationFrameId = requestAnimationFrame(sendToMediaPipe);
-          };
-          sendToMediaPipe();
+          videoRef.current.srcObject = cameraStream; await videoRef.current.play();
+          const send = async () => { if (videoRef.current) await hands.send({ image: videoRef.current }); animationFrameId = requestAnimationFrame(send); };
+          send();
         }
-      } catch (err) {
-        console.error("Camera access error:", err);
-      }
+      } catch (err) { console.error(err); }
     };
-
     startCamera();
-
-    return () => {
-        if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
-        cancelAnimationFrame(animationFrameId);
-    };
+    return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()); cancelAnimationFrame(animationFrameId); };
   }, [score, mode, photo]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0a0a0c] flex flex-col items-center justify-center p-8 text-white font-game overflow-hidden select-none">
-      {/* Background Video - See yourself clearly */}
-      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-40 scale-x-[-1]" playsInline muted />
+    <div className="fixed inset-0 z-50 bg-[#0a0a0c] flex flex-col items-center justify-center p-4 md:p-8 text-white font-game overflow-hidden select-none">
+      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-30 scale-x-[-1]" playsInline muted />
       
-      {/* Top Section: Small Score and Photo (Glass Panel) */}
-      <div className="absolute top-10 flex flex-col items-center z-10 animate-fade-in-down">
-          <h2 className="text-7xl text-red-500 mb-6 drop-shadow-[0_0_20px_rgba(239,68,68,0.7)] uppercase font-bold italic">KẾT THÚC</h2>
-          <div className="flex items-center gap-6 bg-white/10 backdrop-blur-2xl p-6 rounded-[2.5rem] border-2 border-white/20 shadow-2xl">
-            <img src={photo} alt="Face capture" className="w-40 h-32 object-cover rounded-2xl border-2 border-yellow-400 shadow-lg" />
-            <div className="flex flex-col">
-              <span className="text-gray-300 font-sans text-lg uppercase font-black tracking-widest">Điểm Ninja</span>
-              <span className="text-7xl text-yellow-400 drop-shadow-md">{score}</span>
+      <div className="absolute top-4 md:top-10 flex flex-col items-center z-10 text-center">
+          <h2 className="text-5xl md:text-7xl lg:text-8xl text-red-500 mb-4 md:mb-8 drop-shadow-2xl uppercase font-black italic">GAME OVER</h2>
+          <div className="flex items-center gap-4 md:gap-8 bg-white/10 backdrop-blur-3xl p-4 md:p-8 rounded-[1.5rem] md:rounded-[3rem] border-2 md:border-4 border-white/20 shadow-2xl">
+            <img src={photo} alt="Face" className="w-24 h-20 md:w-48 md:h-36 object-cover rounded-xl md:rounded-3xl border-2 md:border-4 border-yellow-400" />
+            <div className="flex flex-col text-left">
+              <span className="text-gray-300 font-sans text-xs md:text-xl uppercase font-black tracking-widest">FINAL SCORE</span>
+              <span className="text-4xl md:text-7xl lg:text-9xl text-yellow-400 drop-shadow-md">{score}</span>
             </div>
           </div>
       </div>
 
-      {/* Center Section: Huge Transparent Glass Buttons */}
-      <div className="flex flex-col gap-10 w-full max-w-2xl z-20 mt-24">
+      <div className="flex flex-col gap-4 md:gap-8 w-full max-w-xl md:max-w-2xl lg:max-w-3xl z-20 mt-20 md:mt-40">
           <div 
             ref={el => { buttonRefs.current['restart'] = el; }}
-            className={`group relative overflow-hidden w-full h-52 flex items-center justify-center rounded-[4rem] text-8xl font-black transition-all duration-300 backdrop-blur-3xl border-4 ${hoveredId === 'restart' ? 'bg-white/30 border-white scale-105 shadow-[0_0_80px_rgba(255,255,255,0.3)]' : 'bg-white/10 border-white/20'}`}
+            className={`group relative overflow-hidden w-full h-24 md:h-44 flex items-center justify-center rounded-[2rem] md:rounded-[4rem] text-4xl md:text-7xl lg:text-8xl font-black transition-all duration-300 backdrop-blur-3xl border-2 md:border-4 ${hoveredId === 'restart' ? 'bg-white/20 border-white scale-105' : 'bg-white/5 border-white/10'}`}
           >
-            <span className="relative z-10 drop-shadow-lg text-green-400">
-                {hoveredId === 'restart' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'CHƠI LẠI'}
-            </span>
-            {hoveredId === 'restart' && (
-              <div className="absolute bottom-0 left-0 h-full bg-green-500/20 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
-            )}
+            <span className="relative z-10 text-green-400">AGAIN ⚔️</span>
+            {hoveredId === 'restart' && <div className="absolute bottom-0 left-0 h-full bg-green-500/20 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />}
           </div>
 
           <div 
             ref={el => { buttonRefs.current['home'] = el; }}
-            className={`group relative overflow-hidden w-full h-44 flex items-center justify-center rounded-[4rem] text-7xl font-black transition-all duration-300 backdrop-blur-3xl border-4 ${hoveredId === 'home' ? 'bg-white/30 border-white scale-105 shadow-[0_0_60px_rgba(255,255,255,0.2)]' : 'bg-white/10 border-white/20'}`}
+            className={`group relative overflow-hidden w-full h-20 md:h-36 flex items-center justify-center rounded-[2rem] md:rounded-[4rem] text-3xl md:text-6xl lg:text-7xl font-black transition-all duration-300 backdrop-blur-3xl border-2 md:border-4 ${hoveredId === 'home' ? 'bg-white/20 border-white scale-105' : 'bg-white/5 border-white/10'}`}
           >
-            <span className="relative z-10 drop-shadow-lg text-white">
-                {hoveredId === 'home' && isGrabbing ? `${Math.ceil(3 - (holdProgress * 0.03))}s...` : 'VỀ MENU'}
-            </span>
-            {hoveredId === 'home' && (
-              <div className="absolute bottom-0 left-0 h-full bg-white/10 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />
-            )}
+            <span className="relative z-10 text-white">MENU 🏠</span>
+            {hoveredId === 'home' && <div className="absolute bottom-0 left-0 h-full bg-white/10 transition-all ease-linear" style={{ width: `${holdProgress}%` }} />}
           </div>
       </div>
 
-      {/* Instruction */}
-      <div className="absolute bottom-10 bg-white/10 backdrop-blur-xl px-12 py-6 rounded-full border border-white/20 flex items-center gap-6 z-10">
-        <span className="text-4xl">✊</span>
-        <p className="font-sans text-gray-200 text-xl font-black uppercase tracking-widest">NẮM TAY ĐỂ CHỌN</p>
+      <div className="absolute bottom-6 md:bottom-12 bg-white/10 backdrop-blur-2xl px-6 py-3 md:px-10 md:py-5 rounded-full border border-white/20 flex items-center gap-4 z-10">
+        <span className="text-2xl md:text-4xl">✊</span>
+        <p className="font-sans text-gray-300 text-sm md:text-xl font-black uppercase tracking-widest">FIST TO SELECT</p>
       </div>
 
-      {/* Glass CURSOR */}
-      <div 
-        className="fixed z-[100] pointer-events-none transition-all duration-75 ease-out"
-        style={{ left: cursorPos.x, top: cursorPos.y, transform: `translate(-50%, -50%) ${isGrabbing ? 'scale(0.8)' : 'scale(1.2)'}` }}
-      >
-        <div className={`relative w-24 h-24 rounded-full border-[8px] flex items-center justify-center backdrop-blur-md ${isGrabbing ? 'bg-white/60 border-white' : 'bg-white/10 border-white/40'}`}>
-          <div className="text-5xl">{isGrabbing ? '✊' : '🖐️'}</div>
+      <div className="fixed z-[100] pointer-events-none transition-all duration-75 ease-out" style={{ left: cursorPos.x, top: cursorPos.y, transform: 'translate(-50%, -50%)' }}>
+        <div className={`w-16 h-16 md:w-24 md:h-24 rounded-full border-[6px] md:border-[10px] flex items-center justify-center backdrop-blur-md ${isGrabbing ? 'bg-white/60 border-white scale-75' : 'bg-white/10 border-white/40'}`}>
+          <div className="text-2xl md:text-5xl">{isGrabbing ? '✊' : '🖐️'}</div>
         </div>
       </div>
     </div>

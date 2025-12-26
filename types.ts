@@ -1,7 +1,9 @@
+
 export enum GameMode {
   TIME = 'TIME',
   SURVIVAL = 'SURVIVAL',
   DODGE = 'DODGE',
+  TEST_HANDS = 'TEST_HANDS',
 }
 
 export enum GameState {
@@ -34,7 +36,7 @@ export interface Entity {
   scoreValue: number;
   isPoisoned?: boolean;
   isHalf?: 'left' | 'right';
-  slicedAt?: number; // Thời điểm bị chém
+  slicedAt?: number;
 }
 
 export interface Particle {
@@ -63,6 +65,6 @@ export interface LeaderboardEntry {
   name?: string;
   score: number | string;
   mode: GameMode;
-  photo: string; // base64 image
+  photo: string;
   date: number;
 }
