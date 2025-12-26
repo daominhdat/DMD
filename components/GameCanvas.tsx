@@ -15,7 +15,6 @@ interface GameCanvasProps {
 const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const tempCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas')); // For segmentation processing
   
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [calibrationProgress, setCalibrationProgress] = useState(0);
@@ -38,7 +37,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
   // New Refs for Slash Logic
   const prevHandPosRef = useRef({ x: 0, y: 0 });
   const isSlashingRef = useRef(false);
-  const segmentationMaskRef = useRef<ImageBitmap | null>(null);
 
   const [uiScore, setUiScore] = useState(0);
   const [uiLives, setUiLives] = useState(10);
@@ -118,9 +116,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
           const tip = lm[8]; // Index finger tip
           
           // Coordinate mapping
-          const rect = canvas.getBoundingClientRect();
-          // Assuming object-cover logic is similar to Menu or simple scaling if fullscreen
-          // Ideally reuse logic. For now, simple scaling as typically GameCanvas is fullscreen 16:9
           const x = (1 - tip.x) * canvas.width;
           const y = tip.y * canvas.height;
           
@@ -175,16 +170,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       }
     });
 
-    // --- SETUP SELFIE SEGMENTATION ---
-    const selfieSegmentation = new window.SelfieSegmentation({
-        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
-    });
-    selfieSegmentation.setOptions({ modelSelection: 1 }); // 0: general, 1: landscape (faster)
-
-    selfieSegmentation.onResults((results: any) => {
-        segmentationMaskRef.current = results.segmentationMask;
-    });
-
     const startCamera = async () => {
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 } });
@@ -194,10 +179,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
 
           const send = async () => {
               if (videoRef.current && videoRef.current.readyState >= 2) {
-                // Send to both models. Warning: High load.
-                // Optimization: Alternate frames or prioritize Hands?
-                // For "Hologram" effect we need segmentation.
-                await selfieSegmentation.send({ image: videoRef.current });
                 await hands.send({ image: videoRef.current });
               }
               animationFrameId = requestAnimationFrame(send);
@@ -212,47 +193,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       if (!ctx || !canvas || isGameOverRef.current) return;
       const nowTs = Date.now();
 
-      // 1. Draw Background (Black)
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // 2. Draw Body Segmentation (Hologram Effect)
-      if (videoRef.current && segmentationMaskRef.current) {
-         ctx.save();
-         ctx.scale(-1, 1);
-         ctx.translate(-canvas.width, 0);
-         
-         const tCanvas = tempCanvasRef.current;
-         tCanvas.width = canvas.width;
-         tCanvas.height = canvas.height;
-         const tCtx = tCanvas.getContext('2d');
-         
-         if (tCtx) {
-             // Draw Mask
-             tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
-             tCtx.drawImage(segmentationMaskRef.current, 0, 0, tCanvas.width, tCanvas.height);
-             
-             // Composite Video over Mask
-             tCtx.globalCompositeOperation = 'source-in';
-             tCtx.filter = 'grayscale(100%) sepia(100%) hue-rotate(180deg) brightness(1.5)'; // Cyan look
-             tCtx.drawImage(videoRef.current, 0, 0, tCanvas.width, tCanvas.height);
-         }
-
-         // Draw the segmented person with Glow
-         ctx.shadowBlur = 30;
-         ctx.shadowColor = '#00ffff';
-         ctx.drawImage(tCanvas, 0, 0);
-         ctx.shadowBlur = 0; // Reset
-         
-         ctx.restore();
-      } else if (videoRef.current) {
-          // Fallback if segmentation not ready
-          ctx.save();
-          ctx.scale(-1, 1); ctx.translate(-canvas.width, 0);
-          ctx.globalAlpha = 0.3;
+      // 1. Draw Background (Raw Video)
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.translate(-canvas.width, 0);
+      if (videoRef.current && videoRef.current.readyState >= 2) {
           ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-          ctx.restore();
       }
+      // Add a slight dark overlay to make fruits/particles pop against background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
 
       if (!isCalibrated) {
          drawCalibrationOverlay(ctx, canvas);
