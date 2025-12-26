@@ -1,7 +1,10 @@
+
 export const GRAVITY = 0.28; 
 export const FRUIT_SPAWN_RATE_INITIAL = 60; 
-export const BLADE_LENGTH = 12; 
+export const BLADE_LENGTH = 15; 
 export const BLADE_WIDTH = 10;
+export const MIN_SLASH_VELOCITY = 15; // Pixels per frame required to register a slash
+export const TRAIL_LIFETIME = 250; // ms
 
 // Colors for the two specific hands
 export const HAND_COLORS = ['#00ffff', '#ff00ff']; 

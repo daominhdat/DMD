@@ -1,8 +1,8 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { GameMode, ItemType, Entity, Particle, HandPoint, GameConfig } from '../types';
-import { GRAVITY, FRUIT_TYPES, SPECIAL_ITEMS, BLADE_LENGTH, BLADE_WIDTH } from '../constants';
-import { randomRange, pointInCircle } from '../utils';
+import { GRAVITY, FRUIT_TYPES, SPECIAL_ITEMS, BLADE_LENGTH, BLADE_WIDTH, MIN_SLASH_VELOCITY, TRAIL_LIFETIME } from '../constants';
+import { randomRange, lineIntersectsCircle, playSoundEffect } from '../utils';
 
 declare const window: any;
 
@@ -15,6 +15,7 @@ interface GameCanvasProps {
 const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tempCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas')); // For segmentation processing
   
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [calibrationProgress, setCalibrationProgress] = useState(0);
@@ -33,6 +34,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
   const isGameOverRef = useRef(false);
   const calibrationFramesRef = useRef(0);
   const hasShownStartRef = useRef(false);
+
+  // New Refs for Slash Logic
+  const prevHandPosRef = useRef({ x: 0, y: 0 });
+  const isSlashingRef = useRef(false);
+  const segmentationMaskRef = useRef<ImageBitmap | null>(null);
 
   const [uiScore, setUiScore] = useState(0);
   const [uiLives, setUiLives] = useState(10);
@@ -76,6 +82,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Reset Game State
     scoreRef.current = 0;
     livesRef.current = 10; 
     if (config.mode === GameMode.TIME) livesRef.current = 0;
@@ -87,10 +94,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
     particlesRef.current = [];
     handTrailRef.current = [];
     isGameOverRef.current = false;
+    isSlashingRef.current = false;
 
     let animationFrameId: number;
     let cameraStream: MediaStream | null = null;
 
+    // --- SETUP MEDIAPIPE HANDS ---
     const hands = new window.Hands({
       locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
@@ -106,16 +115,40 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
           const lm = results.multiHandLandmarks[0];
           handLandmarksRef.current = lm;
-          const tip = lm[8]; 
+          const tip = lm[8]; // Index finger tip
+          
+          // Coordinate mapping
+          const rect = canvas.getBoundingClientRect();
+          // Assuming object-cover logic is similar to Menu or simple scaling if fullscreen
+          // Ideally reuse logic. For now, simple scaling as typically GameCanvas is fullscreen 16:9
           const x = (1 - tip.x) * canvas.width;
           const y = tip.y * canvas.height;
+          
           handPosRef.current = { x, y };
           isGrabbingRef.current = isFist(lm);
 
-          let updatedTrail = [{ x, y }, ...handTrailRef.current];
-          if (updatedTrail.length > BLADE_LENGTH) updatedTrail.pop();
-          handTrailRef.current = updatedTrail;
+          // --- SLASH LOGIC ---
+          const now = Date.now();
+          const dx = x - prevHandPosRef.current.x;
+          const dy = y - prevHandPosRef.current.y;
+          const velocity = Math.hypot(dx, dy); // pixels per frame (approx)
 
+          if (velocity > MIN_SLASH_VELOCITY) {
+             isSlashingRef.current = true;
+             // Add point to trail
+             handTrailRef.current.push({ x, y, ts: now });
+             // Play swish sound if starting slash
+             if (handTrailRef.current.length % 5 === 0) playSoundEffect('swish');
+          } else {
+             isSlashingRef.current = false;
+          }
+
+          // Cleanup old trail points
+          handTrailRef.current = handTrailRef.current.filter(p => now - p.ts < TRAIL_LIFETIME);
+          
+          prevHandPosRef.current = { x, y };
+
+          // Calibration Logic
           if (!isCalibrated) {
               const targetX = canvas.width / 2;
               const targetY = canvas.height / 2;
@@ -131,7 +164,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
               }
           }
       } else {
-          handTrailRef.current = [];
+          // No hands
+          isSlashingRef.current = false;
           handLandmarksRef.current = null;
           isGrabbingRef.current = false;
           if (!isCalibrated) {
@@ -139,6 +173,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
               setCalibrationProgress((calibrationFramesRef.current / 50) * 100);
           }
       }
+    });
+
+    // --- SETUP SELFIE SEGMENTATION ---
+    const selfieSegmentation = new window.SelfieSegmentation({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+    });
+    selfieSegmentation.setOptions({ modelSelection: 1 }); // 0: general, 1: landscape (faster)
+
+    selfieSegmentation.onResults((results: any) => {
+        segmentationMaskRef.current = results.segmentationMask;
     });
 
     const startCamera = async () => {
@@ -150,6 +194,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
 
           const send = async () => {
               if (videoRef.current && videoRef.current.readyState >= 2) {
+                // Send to both models. Warning: High load.
+                // Optimization: Alternate frames or prioritize Hands?
+                // For "Hologram" effect we need segmentation.
+                await selfieSegmentation.send({ image: videoRef.current });
                 await hands.send({ image: videoRef.current });
               }
               animationFrameId = requestAnimationFrame(send);
@@ -164,23 +212,54 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       if (!ctx || !canvas || isGameOverRef.current) return;
       const nowTs = Date.now();
 
-      ctx.save();
-      ctx.scale(-1, 1); ctx.translate(-canvas.width, 0);
-      ctx.filter = 'brightness(1.1) contrast(1.1) saturate(1.3) blur(1px)';
-      if (video && video.readyState >= 2) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // 1. Draw Background (Black)
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 2. Draw Body Segmentation (Hologram Effect)
+      if (videoRef.current && segmentationMaskRef.current) {
+         ctx.save();
+         ctx.scale(-1, 1);
+         ctx.translate(-canvas.width, 0);
+         
+         const tCanvas = tempCanvasRef.current;
+         tCanvas.width = canvas.width;
+         tCanvas.height = canvas.height;
+         const tCtx = tCanvas.getContext('2d');
+         
+         if (tCtx) {
+             // Draw Mask
+             tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+             tCtx.drawImage(segmentationMaskRef.current, 0, 0, tCanvas.width, tCanvas.height);
+             
+             // Composite Video over Mask
+             tCtx.globalCompositeOperation = 'source-in';
+             tCtx.filter = 'grayscale(100%) sepia(100%) hue-rotate(180deg) brightness(1.5)'; // Cyan look
+             tCtx.drawImage(videoRef.current, 0, 0, tCanvas.width, tCanvas.height);
+         }
+
+         // Draw the segmented person with Glow
+         ctx.shadowBlur = 30;
+         ctx.shadowColor = '#00ffff';
+         ctx.drawImage(tCanvas, 0, 0);
+         ctx.shadowBlur = 0; // Reset
+         
+         ctx.restore();
+      } else if (videoRef.current) {
+          // Fallback if segmentation not ready
+          ctx.save();
+          ctx.scale(-1, 1); ctx.translate(-canvas.width, 0);
+          ctx.globalAlpha = 0.3;
+          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
       }
-      const vignette = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.width/4, canvas.width/2, canvas.height/2, canvas.width);
-      vignette.addColorStop(0, 'rgba(0,0,0,0)');
-      vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
-      ctx.fillStyle = vignette; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.restore();
 
       if (!isCalibrated) {
          drawCalibrationOverlay(ctx, canvas);
          requestAnimationFrame(loop); return;
       }
 
+      // Exit Button Logic
       const exitBtnWidth = canvas.width / 6;
       const exitBtnHeight = canvas.height / 10;
       const { x: hx, y: hy } = handPosRef.current;
@@ -189,6 +268,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
         if (exitHoldProgressRef.current >= 100) { onExit(); return; }
       } else { exitHoldProgressRef.current = 0; }
 
+      // Game Loop Logic
       frameCountRef.current++;
       if (frameCountRef.current % 600 === 0 && !isPausedRef.current && config.mode !== GameMode.TEST_HANDS) {
           difficultyMultiplierRef.current *= 1.15;
@@ -236,7 +316,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
           ctx.translate(entity.x, entity.y);
           ctx.rotate(entity.rotation);
           ctx.scale(entity.scale, entity.scale);
-          ctx.shadowBlur = 20; ctx.shadowColor = entity.color;
           ctx.font = `${canvas.width / 25}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           if (entity.isHalf) {
               ctx.beginPath();
@@ -244,12 +323,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
               ctx.clip();
           }
           ctx.fillText(entity.emoji, 0, 0);
-          if (!entity.isHalf) {
-            const shiny = ctx.createRadialGradient(-15, -15, 2, -15, -15, 15);
-            shiny.addColorStop(0, 'rgba(255,255,255,0.7)');
-            shiny.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.fillStyle = shiny; ctx.beginPath(); ctx.arc(-15, -15, 15, 0, Math.PI * 2); ctx.fill();
-          }
           ctx.restore();
           
           if (entity.y > canvas.height + 200) {
@@ -261,41 +334,83 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
           }
       });
 
+      // --- COLLISION DETECTION (SLASH) ---
       const trail = handTrailRef.current;
-      entitiesRef.current.forEach((entity) => {
-          if (entitiesToRemove.includes(entity.id) || entity.isHalf) return;
-          if (trail.length > 0 && pointInCircle(trail[0].x, trail[0].y, entity.x, entity.y, canvas.width / 18)) {
-              handleHitStandard(entity, newEntities, nowTs);
-              entitiesToRemove.push(entity.id);
-          }
-      });
+      if (trail.length >= 2) {
+          const p1 = trail[trail.length - 1];
+          const p2 = trail[trail.length - 2];
+          
+          entitiesRef.current.forEach((entity) => {
+              if (entitiesToRemove.includes(entity.id) || entity.isHalf) return;
+              
+              // Use Line Segment Intersection for accurate slicing
+              const hitRadius = canvas.width / 18;
+              const isHit = lineIntersectsCircle(p1.x, p1.y, p2.x, p2.y, entity.x, entity.y, hitRadius);
 
-      entitiesRef.current = entitiesRef.current.filter(e => !entitiesToRemove.includes(e.id)).concat(newEntities);
-
-      if (handLandmarksRef.current) {
-          const lm = handLandmarksRef.current;
-          ctx.lineWidth = canvas.width / 400; ctx.strokeStyle = isGrabbingRef.current ? '#ff00ff' : '#00ffff';
-          HAND_CONNECTIONS.forEach(([s, e]) => {
-              ctx.beginPath();
-              ctx.moveTo((1 - lm[s].x) * canvas.width, lm[s].y * canvas.height);
-              ctx.lineTo((1 - lm[e].x) * canvas.width, lm[e].y * canvas.height);
-              ctx.stroke();
+              if (isHit) {
+                  handleHitStandard(entity, newEntities, nowTs);
+                  entitiesToRemove.push(entity.id);
+              }
           });
       }
 
+      entitiesRef.current = entitiesRef.current.filter(e => !entitiesToRemove.includes(e.id)).concat(newEntities);
+
+      // --- DRAW SLASH TRAIL ---
+      if (trail.length >= 2) {
+          ctx.save();
+          // Glow effect for blade
+          ctx.shadowBlur = 20; 
+          ctx.shadowColor = '#00ffff'; 
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          // Draw segments with fading width
+          for (let i = 0; i < trail.length - 1; i++) {
+              const pt = trail[i];
+              const nextPt = trail[i+1];
+              
+              // Calculate life percentage
+              const age = nowTs - pt.ts;
+              const lifePct = 1 - (age / TRAIL_LIFETIME);
+              
+              if (lifePct <= 0) continue;
+
+              ctx.beginPath();
+              ctx.lineWidth = BLADE_WIDTH * lifePct * 2; // Tapering
+              ctx.strokeStyle = `rgba(0, 255, 255, ${lifePct})`;
+              ctx.moveTo(pt.x, pt.y);
+              ctx.lineTo(nextPt.x, nextPt.y);
+              ctx.stroke();
+          }
+          ctx.restore();
+      }
+
+      // Draw Hand Landmarks (Optional, maybe just tip?)
+      if (handLandmarksRef.current) {
+          const tip = handLandmarksRef.current[8];
+          const tx = (1-tip.x)*canvas.width;
+          const ty = tip.y*canvas.height;
+          
+          // Draw Glowing Tip
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = '#ff00ff';
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(tx, ty, 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+      }
+
       particlesRef.current.forEach(p => {
-          p.x += p.vx; p.y += p.vy; p.life -= 0.06;
+          p.x += p.vx; p.y += p.vy; 
+          p.vy += 0.2; // Gravity for particles
+          p.life -= 0.03;
           ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color;
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
       });
-
-      if (trail.length >= 2) {
-          ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff'; ctx.strokeStyle = '#00ffff';
-          ctx.lineWidth = BLADE_WIDTH; ctx.beginPath();
-          ctx.moveTo(trail[0].x, trail[0].y);
-          for (let j = 1; j < trail.length; j++) ctx.lineTo(trail[j].x, trail[j].y);
-          ctx.stroke();
-      }
+      // Remove dead particles
+      particlesRef.current = particlesRef.current.filter(p => p.life > 0);
 
       if (scoreRef.current !== uiScore) setUiScore(scoreRef.current);
       requestAnimationFrame(loop);
@@ -306,7 +421,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
         isGameOverRef.current = true;
         const cap = document.createElement('canvas'); cap.width = 400; cap.height = 300;
         const cctx = cap.getContext('2d');
-        if (cctx && video) { cctx.scale(-1, 1); cctx.drawImage(video, -400, 0, 400, 300); onGameOver(scoreRef.current, config.mode, cap.toDataURL('image/jpeg', 0.8)); }
+        if (cctx && video) { 
+            // Draw result of current frame (masked if possible, or just raw)
+            cctx.scale(-1, 1); cctx.drawImage(video, -400, 0, 400, 300); 
+            onGameOver(scoreRef.current, config.mode, cap.toDataURL('image/jpeg', 0.8)); 
+        }
     };
 
     const drawCalibrationOverlay = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
@@ -333,15 +452,35 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
 
     const handleHitStandard = (entity: Entity, newEntities: Entity[], ts: number) => {
         if (isGameOverRef.current) return;
+        
+        // Haptic Feedback
+        if (navigator.vibrate) navigator.vibrate(50);
+
         if (entity.type === ItemType.BOMB) {
             scoreRef.current = Math.max(0, scoreRef.current - 10); isPausedRef.current = true;
             showNotification("BOM! -10");
+            playSoundEffect('bomb');
         } else {
+            playSoundEffect('splat');
             scoreRef.current += entity.scoreValue;
             newEntities.push({...entity, id: Math.random(), isHalf: 'left', vx: entity.vx - 4, vy: entity.vy - 3, slicedAt: ts});
             newEntities.push({...entity, id: Math.random(), isHalf: 'right', vx: entity.vx + 4, vy: entity.vy - 3, slicedAt: ts});
         }
-        for (let i = 0; i < 15; i++) particlesRef.current.push({ id: Math.random(), x: entity.x, y: entity.y, vx: randomRange(-10, 10), vy: randomRange(-10, 10), color: entity.color, life: 1.0, size: randomRange(5, 12) });
+        
+        // Juice Splatter
+        for (let i = 0; i < 20; i++) {
+            particlesRef.current.push({ 
+                id: Math.random(), 
+                x: entity.x, 
+                y: entity.y, 
+                vx: randomRange(-15, 15), 
+                vy: randomRange(-15, 15), 
+                color: entity.color, 
+                life: 1.0, 
+                size: randomRange(3, 15) 
+            });
+        }
+        
         if (isPausedRef.current) setTimeout(() => isPausedRef.current = false, 1000);
     };
 
@@ -362,7 +501,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
           </div>
         )}
 
-        <div className="absolute top-0 left-0 w-full p-4 md:p-10 flex justify-between items-start font-game pointer-events-none">
+        <div className="absolute top-0 left-0 w-full p-4 md:p-10 flex justify-between items-start font-game pointer-events-none z-50">
             <div className="bg-white/10 backdrop-blur-2xl p-4 md:p-8 rounded-[1.5rem] md:rounded-[3rem] border-2 md:border-4 border-white/20 shadow-2xl">
                 <div className="text-4xl md:text-7xl lg:text-9xl text-yellow-400 drop-shadow-md">SCORE: {uiScore}</div>
                 {config.mode !== GameMode.TIME && <div className="text-2xl md:text-5xl text-red-500 mt-2 uppercase">LIVES: {uiLives}</div>}

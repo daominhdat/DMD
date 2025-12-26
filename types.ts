@@ -53,6 +53,7 @@ export interface Particle {
 export interface HandPoint {
   x: number;
   y: number;
+  ts: number; // Timestamp created
 }
 
 export interface GameConfig {
