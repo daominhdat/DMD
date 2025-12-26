@@ -87,12 +87,11 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         setLandmarks(lm);
         
         // --- Fix Coordinates Mapping ---
-        // Calculate screen coordinates based on object-cover sizing
         const rect = canvas.getBoundingClientRect();
         const clientW = rect.width;
         const clientH = rect.height;
-        const renderW = 1920; // Canvas internal width
-        const renderH = 1080; // Canvas internal height
+        const renderW = 1920; 
+        const renderH = 1080; 
         
         const clientAspect = clientW / clientH;
         const renderAspect = renderW / renderH;
@@ -100,18 +99,15 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         let scale, offsetX, offsetY;
         
         if (clientAspect > renderAspect) {
-             // Screen is wider: Canvas fits width, crops height
              scale = clientW / renderW;
              offsetX = 0;
              offsetY = (clientH - (renderH * scale)) / 2;
         } else {
-             // Screen is taller: Canvas fits height, crops width
              scale = clientH / renderH;
              offsetX = (clientW - (renderW * scale)) / 2;
              offsetY = 0;
         }
 
-        // Calculate visual X on screen (mirroring handled by drawing logic on canvas, but for interaction we need 1-x)
         const screenX = (1 - lm[8].x) * renderW * scale + offsetX;
         const screenY = lm[8].y * renderH * scale + offsetY;
         
@@ -145,13 +141,7 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
           const el = buttonRefs.current[id];
           if (el) {
             const elRect = el.getBoundingClientRect();
-            // Use screenX/screenY relative to viewport
-            // Canvas might be offset if parent has padding, but here it is fixed/absolute. 
-            // Better to assume screenX/screenY are relative to canvas container (which is window due to fixed/absolute).
-            // But getBoundingClientRect returns viewport coordinates.
-            // If canvas is absolute top-0 left-0, rect.left is 0.
-            
-            // Adjust for canvas position (usually 0,0)
+            // Use global coordinates relative to viewport
             const globalX = screenX + rect.left;
             const globalY = screenY + rect.top;
 
@@ -178,13 +168,16 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
         cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 } });
         if (videoRef.current) {
           videoRef.current.srcObject = cameraStream;
-          videoRef.current.onloadedmetadata = () => {
-            const send = async () => {
-                if (videoRef.current) await hands.send({ image: videoRef.current });
-                animationFrameId = requestAnimationFrame(send);
-            };
-            send();
+          // IMPORTANT: Explicitly play the video
+          await videoRef.current.play().catch(e => console.error("Video play error:", e));
+
+          const send = async () => {
+              if (videoRef.current && videoRef.current.readyState >= 2) {
+                await hands.send({ image: videoRef.current });
+              }
+              animationFrameId = requestAnimationFrame(send);
           };
+          send();
         }
       } catch (err) { console.error(err); }
     };

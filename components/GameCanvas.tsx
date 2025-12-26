@@ -146,13 +146,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
         cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 } });
         if (videoRef.current) {
           videoRef.current.srcObject = cameraStream;
-          videoRef.current.onloadedmetadata = () => {
-            const send = async () => {
-                if (videoRef.current) await hands.send({ image: videoRef.current });
-                animationFrameId = requestAnimationFrame(send);
-            };
-            send();
+          await videoRef.current.play().catch(e => console.error(e));
+
+          const send = async () => {
+              if (videoRef.current && videoRef.current.readyState >= 2) {
+                await hands.send({ image: videoRef.current });
+              }
+              animationFrameId = requestAnimationFrame(send);
           };
+          send();
         }
       } catch (err) { console.error(err); }
     };
@@ -165,7 +167,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ config, onGameOver, onExit }) =
       ctx.save();
       ctx.scale(-1, 1); ctx.translate(-canvas.width, 0);
       ctx.filter = 'brightness(1.1) contrast(1.1) saturate(1.3) blur(1px)';
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (video && video.readyState >= 2) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
       const vignette = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.width/4, canvas.width/2, canvas.height/2, canvas.width);
       vignette.addColorStop(0, 'rgba(0,0,0,0)');
       vignette.addColorStop(1, 'rgba(0,0,0,0.5)');
