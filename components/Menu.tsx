@@ -60,6 +60,7 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
       const ctx = canvas?.getContext('2d');
       if (!canvas || !ctx) return;
 
+      // Draw background
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       ctx.scale(-1, 1);
@@ -84,11 +85,40 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const lm = results.multiHandLandmarks[0];
         setLandmarks(lm);
-        const x = (1 - lm[8].x) * window.innerWidth;
-        const y = lm[8].y * window.innerHeight;
+        
+        // --- Fix Coordinates Mapping ---
+        // Calculate screen coordinates based on object-cover sizing
+        const rect = canvas.getBoundingClientRect();
+        const clientW = rect.width;
+        const clientH = rect.height;
+        const renderW = 1920; // Canvas internal width
+        const renderH = 1080; // Canvas internal height
+        
+        const clientAspect = clientW / clientH;
+        const renderAspect = renderW / renderH;
+        
+        let scale, offsetX, offsetY;
+        
+        if (clientAspect > renderAspect) {
+             // Screen is wider: Canvas fits width, crops height
+             scale = clientW / renderW;
+             offsetX = 0;
+             offsetY = (clientH - (renderH * scale)) / 2;
+        } else {
+             // Screen is taller: Canvas fits height, crops width
+             scale = clientH / renderH;
+             offsetX = (clientW - (renderW * scale)) / 2;
+             offsetY = 0;
+        }
+
+        // Calculate visual X on screen (mirroring handled by drawing logic on canvas, but for interaction we need 1-x)
+        const screenX = (1 - lm[8].x) * renderW * scale + offsetX;
+        const screenY = lm[8].y * renderH * scale + offsetY;
+        
         const grabbing = isFist(lm);
         setIsGrabbing(grabbing);
 
+        // Draw Skeleton (Canvas Space)
         ctx.lineWidth = canvas.width / 300;
         ctx.lineCap = 'round';
         ctx.shadowBlur = 10;
@@ -109,12 +139,23 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
             ctx.fill();
         });
 
+        // Hover Detection
         let foundHover = null;
         for (const id in buttonRefs.current) {
           const el = buttonRefs.current[id];
           if (el) {
-            const rect = el.getBoundingClientRect();
-            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+            const elRect = el.getBoundingClientRect();
+            // Use screenX/screenY relative to viewport
+            // Canvas might be offset if parent has padding, but here it is fixed/absolute. 
+            // Better to assume screenX/screenY are relative to canvas container (which is window due to fixed/absolute).
+            // But getBoundingClientRect returns viewport coordinates.
+            // If canvas is absolute top-0 left-0, rect.left is 0.
+            
+            // Adjust for canvas position (usually 0,0)
+            const globalX = screenX + rect.left;
+            const globalY = screenY + rect.top;
+
+            if (globalX >= elRect.left && globalX <= elRect.right && globalY >= elRect.top && globalY <= elRect.bottom) {
               foundHover = id; break;
             }
           }
@@ -123,7 +164,7 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
 
         if (foundHover && grabbing) {
           if (!holdStartTimeRef.current) holdStartTimeRef.current = Date.now();
-          const progress = Math.min(100, ((Date.now() - holdStartTimeRef.current) / 1800) * 100);
+          const progress = Math.min(100, ((Date.now() - holdStartTimeRef.current) / 1500) * 100);
           setHoldProgress(progress);
           if (progress >= 100) { handleVirtualClick(foundHover); holdStartTimeRef.current = null; setHoldProgress(0); }
         } else { setHoldProgress(0); holdStartTimeRef.current = null; }
@@ -195,11 +236,9 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
       </div>
 
       <div className="relative z-10 flex flex-col items-center mb-8 lg:mb-16 pointer-events-none text-center">
-        {/* Compact & Colorful Title */}
         <h1 className="text-6xl md:text-8xl lg:text-[10rem] font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-[#ff00ff] via-[#00ffff] to-[#ffff00] drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] italic transform skew-x-[-10deg]">
           ARFRUIT
         </h1>
-        {/* Updated Subtitle */}
         <div className="mt-2 px-6 py-2 bg-white/5 rounded-full border border-white/10 backdrop-blur-md shadow-lg">
            <p className="text-sm md:text-xl lg:text-2xl text-cyan-300 font-black tracking-[0.3em] uppercase">
             DEVELOPED BY DMD
@@ -221,7 +260,6 @@ const Menu: React.FC<MenuProps> = ({ onStart }) => {
               ref={el => { buttonRefs.current[modeId] = el; }}
               className={`group relative backdrop-blur-2xl p-6 lg:p-12 min-h-[400px] lg:h-[600px] xl:h-[700px] rounded-[3rem] lg:rounded-[5rem] border-[4px] lg:border-[8px] transition-all duration-500 flex flex-col items-center justify-between shadow-2xl ${hoveredId === modeId ? `bg-white/10 border-white scale-105` : 'bg-black/10 border-white/5'}`}
             >
-              {/* 3D Icon Effect */}
               <div className="relative mb-6 group-hover:-translate-y-4 transition-transform duration-500">
                 <div className={`absolute inset-0 bg-gradient-to-br ${config.color} blur-[60px] opacity-40 rounded-full animate-pulse`}></div>
                 <div className="relative text-8xl md:text-9xl lg:text-[10rem] xl:text-[12rem] drop-shadow-[0_20px_20px_rgba(0,0,0,0.7)] filter contrast-125 saturate-150">
